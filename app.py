@@ -9,6 +9,7 @@ import restore as rst
 import socket
 import requests
 from requests.exceptions import RequestException
+import base64
 
 UPLOAD_FOLDER = './uploads/'
 UPLOAD_KEY = './key/'
@@ -55,22 +56,51 @@ def test_connection(ip):
 def ping():
     return jsonify({'status': 'success'})
 
+@app.route('/upload-key', methods=['POST'])
+def upload_key_file():
+    if 'file' not in request.files:
+        return jsonify({'status': 'error', 'message': 'No file part'}), 400
+        
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'status': 'error', 'message': 'No selected file'}), 400
+        
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        file.save(os.path.join(app.config['UPLOAD_KEY'], filename))
+        return jsonify({'status': 'success', 'message': 'Key file uploaded successfully'})
+    return jsonify({'status': 'error', 'message': 'Invalid file format'}), 400
+
 @app.route('/share-key/<peer_ip>', methods=['POST'])
 def share_key_with_peer(peer_ip):
     try:
         # Get the key file
         list_directory = tools.list_dir('key')
         if not list_directory:
-            return jsonify({'status': 'error', 'message': 'No key file available'}), 400
+            return jsonify({'status': 'error', 'message': 'No key file available. Please encrypt a file first.'}), 400
             
         key_path = './key/' + list_directory[0]
         with open(key_path, 'rb') as f:
             key_data = f.read()
             
+        # Ensure key is in the correct format before sending
+        if not key_data.startswith(b'-----BEGIN'):
+            try:
+                # First try to decode as base64
+                decoded_key = base64.urlsafe_b64decode(key_data)
+                # Then encode it back to ensure it's in the correct format
+                key_data = base64.urlsafe_b64encode(decoded_key)
+            except:
+                # If decoding fails, try to encode the original key
+                key_data = base64.urlsafe_b64encode(key_data)
+        
+        # Convert key to base64 string for transmission
+        key_b64 = base64.b64encode(key_data).decode('utf-8')
+        
         # Send key to peer
         response = requests.post(
             f'http://{peer_ip}:8000/receive-key',
-            files={'key': ('key.pem', key_data)}
+            json={'key_data': key_b64}  # Send as JSON instead of file
         )
         
         if response.status_code == 200:
@@ -84,18 +114,36 @@ def share_key_with_peer(peer_ip):
 @app.route('/receive-key', methods=['POST'])
 def receive_key():
     try:
-        if 'key' not in request.files:
-            return jsonify({'status': 'error', 'message': 'No key file received'}), 400
+        if not request.is_json:
+            return jsonify({'status': 'error', 'message': 'Invalid request format'}), 400
             
-        key_file = request.files['key']
-        if key_file.filename == '':
-            return jsonify({'status': 'error', 'message': 'No key file selected'}), 400
+        data = request.get_json()
+        if 'key_data' not in data:
+            return jsonify({'status': 'error', 'message': 'No key data received'}), 400
+            
+        # Decode the base64 key data
+        try:
+            key_data = base64.b64decode(data['key_data'])
+        except:
+            return jsonify({'status': 'error', 'message': 'Invalid key format'}), 400
+            
+        # Ensure key is in the correct format
+        if not key_data.startswith(b'-----BEGIN'):
+            try:
+                # First try to decode as base64
+                decoded_key = base64.urlsafe_b64decode(key_data)
+                # Then encode it back to ensure it's in the correct format
+                key_data = base64.urlsafe_b64encode(decoded_key)
+            except:
+                # If decoding fails, try to encode the original key
+                key_data = base64.urlsafe_b64encode(key_data)
             
         # Save the received key
         os.makedirs('received_keys', exist_ok=True)
         sender_ip = request.remote_addr
         key_path = os.path.join('received_keys', f'key_from_{sender_ip}.pem')
-        key_file.save(key_path)
+        with open(key_path, 'wb') as f:
+            f.write(key_data)
         
         return jsonify({'status': 'success', 'message': 'Key received successfully'})
         
@@ -115,6 +163,23 @@ def get_received_keys():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/download-received-key/<peer_ip>')
+def download_received_key(peer_ip):
+    try:
+        key_path = os.path.join('received_keys', f'key_from_{peer_ip}.pem')
+        if not os.path.exists(key_path):
+            flash('No key found from this peer')
+            return redirect(url_for('connect'))
+            
+        return send_file(
+            key_path,
+            download_name=f'key_from_{peer_ip}.pem',
+            as_attachment=True
+        )
+    except Exception as e:
+        flash(f'Error downloading key: {str(e)}')
+        return redirect(url_for('connect'))
+
 @app.route('/use-shared-key/<peer_ip>', methods=['POST'])
 def use_shared_key(peer_ip):
     try:
@@ -122,12 +187,27 @@ def use_shared_key(peer_ip):
         if not os.path.exists(key_path):
             return jsonify({'status': 'error', 'message': 'No key found from this peer'}), 404
             
+        # Read the key data
+        with open(key_path, 'rb') as f:
+            key_data = f.read()
+            
+        # Ensure key is in the correct format
+        if not key_data.startswith(b'-----BEGIN'):
+            try:
+                # First try to decode as base64
+                decoded_key = base64.urlsafe_b64decode(key_data)
+                # Then encode it back to ensure it's in the correct format
+                key_data = base64.urlsafe_b64encode(decoded_key)
+            except:
+                # If decoding fails, try to encode the original key
+                key_data = base64.urlsafe_b64encode(key_data)
+            
         # Copy the key to the key directory
         tools.empty_folder('key')
-        with open(key_path, 'rb') as src, open(os.path.join('key', 'received_key.pem'), 'wb') as dst:
-            dst.write(src.read())
+        with open(os.path.join('key', 'received_key.pem'), 'wb') as f:
+            f.write(key_data)
             
-        return jsonify({'status': 'success', 'message': 'Key ready to use'})
+        return jsonify({'status': 'success', 'message': 'Key ready to use. You can now decrypt files.'})
         
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -199,22 +279,87 @@ def upload_file():
         return 'Invalid File Format!'
     return redirect('/')
 
+@app.route('/check-key-status')
+def check_key_status():
+    try:
+        list_directory = tools.list_dir('key')
+        has_key = len(list_directory) > 0
+        return jsonify({'hasKey': has_key})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/download_data', methods=['GET', 'POST'])
 def upload_key():
-    tools.empty_folder('key')
     if request.method == 'POST':
         if 'file' not in request.files:
             flash('No file part')
             return redirect(request.url)
+            
         file = request.files['file']
         if file.filename == '':
             flash('No selected file')
             return 'NO FILE SELECTED'
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            file.save(os.path.join(app.config['UPLOAD_KEY'], filename))
+            
+        # Check if we need to handle a key file
+        if 'keyFile' in request.files and request.files['keyFile'].filename != '':
+            key_file = request.files['keyFile']
+            if key_file and allowed_file(key_file.filename):
+                tools.empty_folder('key')
+                filename = secure_filename(key_file.filename)
+                key_path = os.path.join(app.config['UPLOAD_KEY'], filename)
+                key_file.save(key_path)
+                
+                # Verify key format
+                try:
+                    with open(key_path, 'rb') as f:
+                        key_data = f.read()
+                    if not key_data.startswith(b'-----BEGIN'):
+                        try:
+                            decoded_key = base64.urlsafe_b64decode(key_data)
+                            key_data = base64.urlsafe_b64encode(decoded_key)
+                            with open(key_path, 'wb') as f:
+                                f.write(key_data)
+                        except:
+                            key_data = base64.urlsafe_b64encode(key_data)
+                            with open(key_path, 'wb') as f:
+                                f.write(key_data)
+                except Exception as e:
+                    flash(f'Error processing key file: {str(e)}')
+                    return redirect(request.url)
+        
+        # Save the encrypted file
+        filename = secure_filename(file.filename)
+        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        
+        # Check if we have a key before proceeding
+        list_directory = tools.list_dir('key')
+        if not list_directory:
+            flash('No key available. Please upload a key file or use a shared key.')
+            return redirect(request.url)
+            
+        try:
+            # Verify key format before decryption
+            key_path = os.path.join('key', list_directory[0])
+            with open(key_path, 'rb') as f:
+                key_data = f.read()
+            if not key_data.startswith(b'-----BEGIN'):
+                try:
+                    decoded_key = base64.urlsafe_b64decode(key_data)
+                    key_data = base64.urlsafe_b64encode(decoded_key)
+                    with open(key_path, 'wb') as f:
+                        f.write(key_data)
+                except:
+                    key_data = base64.urlsafe_b64encode(key_data)
+                    with open(key_path, 'wb') as f:
+                        f.write(key_data)
+            
             return start_decryption()
-        return 'Invalid File Format!'
+        except ValueError as e:
+            flash(f'Decryption failed: {str(e)}')
+            return redirect(request.url)
+        except Exception as e:
+            flash(f'An error occurred: {str(e)}')
+            return redirect(request.url)
     return redirect('/')
 
 if __name__ == '__main__':

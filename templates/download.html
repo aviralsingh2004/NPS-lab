@@ -24,11 +24,21 @@
                             </ol>
                         </div>
 
+                        <!-- Key Status -->
+                        <div id="keyStatus" class="alert alert-warning mb-4" style="display: none;">
+                            <h5>Key Status</h5>
+                            <p id="keyStatusMessage"></p>
+                        </div>
+
                         <!-- Upload Form -->
                         <form action="/download_data" method="post" enctype="multipart/form-data">
                             <div class="mb-3">
                                 <label for="file" class="form-label">Select Encrypted File</label>
                                 <input type="file" class="form-control" name="file" id="file" required>
+                            </div>
+                            <div id="keyUploadSection" class="mb-3" style="display: none;">
+                                <label for="keyFile" class="form-label">Upload Key File (if not already available)</label>
+                                <input type="file" class="form-control" name="keyFile" id="keyFile" accept=".pem">
                             </div>
                             <div class="d-grid gap-2">
                                 <button type="submit" class="btn btn-primary">Decrypt File</button>
@@ -52,5 +62,36 @@
             </div>
         </div>
     </div>
+
+    <script>
+        // Check if a key is already available
+        function checkKeyStatus() {
+            fetch('/check-key-status')
+                .then(response => response.json())
+                .then(data => {
+                    const keyStatus = document.getElementById('keyStatus');
+                    const keyStatusMessage = document.getElementById('keyStatusMessage');
+                    const keyUploadSection = document.getElementById('keyUploadSection');
+                    
+                    if (data.hasKey) {
+                        keyStatus.style.display = 'block';
+                        keyStatus.className = 'alert alert-success mb-4';
+                        keyStatusMessage.textContent = 'A key is already available. You can proceed with file decryption.';
+                        keyUploadSection.style.display = 'none';
+                    } else {
+                        keyStatus.style.display = 'block';
+                        keyStatus.className = 'alert alert-warning mb-4';
+                        keyStatusMessage.textContent = 'No key is available. Please upload a key file.';
+                        keyUploadSection.style.display = 'block';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking key status:', error);
+                });
+        }
+
+        // Check key status when page loads
+        checkKeyStatus();
+    </script>
 </body>
 </html>
