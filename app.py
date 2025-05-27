@@ -289,20 +289,20 @@ def receive_file():
         try:
             # Save the encrypted file
             encrypted_data = base64.b64decode(encrypted_b64)
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            with open(file_path, 'wb') as f:
+            encrypted_file_path = os.path.join('raw_data', 'store_in_me.enc')
+            with open(encrypted_file_path, 'wb') as f:
                 f.write(encrypted_data)
-            logger.debug(f"Encrypted file saved to: {file_path}")
+            logger.debug(f"Encrypted file saved to: {encrypted_file_path}")
             
             # Save the key
             key_data = base64.b64decode(key_b64)
-            key_path = os.path.join(app.config['UPLOAD_KEY'], 'received_key.pem')
+            key_path = os.path.join(app.config['UPLOAD_KEY'], f'{filename}.key')
             with open(key_path, 'wb') as f:
                 f.write(key_data)
             logger.debug(f"Key saved to: {key_path}")
             
             # Decrypt the file
-            decrypted_path = decrypt_file(file_path, key_path)
+            decrypted_path = decrypt_file(encrypted_file_path, key_path)
             logger.debug(f"File decrypted to: {decrypted_path}")
             
             # Move the decrypted file to received_files directory
@@ -319,8 +319,8 @@ def receive_file():
         except Exception as e:
             logger.error(f"Error during decryption process: {str(e)}")
             # Clean up any partial files
-            if os.path.exists(file_path):
-                os.remove(file_path)
+            if os.path.exists(encrypted_file_path):
+                os.remove(encrypted_file_path)
             if os.path.exists(key_path):
                 os.remove(key_path)
             raise
