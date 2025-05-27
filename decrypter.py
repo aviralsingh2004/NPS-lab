@@ -2,6 +2,8 @@ import tools
 import base64
 from cryptography.fernet import Fernet, MultiFernet
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305, AESGCM, AESCCM
+import os
+from flask import jsonify
 
 def Algo1(key):
     try:
@@ -183,6 +185,30 @@ def decrypter():
                     Algo4(files[index], key_4, nonce13)
             except Exception as e:
                 raise ValueError(f"Failed to decrypt file {files[index]}: {str(e)}")
+                
+        # Clean the key directory before saving the new key
+        for f in os.listdir(app.config['UPLOAD_KEY']):
+            safe_remove_file(os.path.join(app.config['UPLOAD_KEY'], f))
+
+        key_path = os.path.join(app.config['UPLOAD_KEY'], 'received.key')
+        try:
+            if not key_1:
+                raise Exception("No key data provided")
+            
+            key_data = base64.b64decode(key_1)
+            if not key_data:
+                raise Exception("Decoded key data is empty")
+            
+            # Ensure key directory exists
+            os.makedirs(app.config['UPLOAD_KEY'], exist_ok=True)
+            
+            with open(key_path, 'wb') as f:
+                f.write(key_data)
+            logger.debug(f"Key saved to: {key_path} ({len(key_data)} bytes)")
+        except Exception as e:
+            logger.error(f"Error saving key: {str(e)}")
+            safe_remove_file(encrypted_file_raw_data_path)
+            return jsonify({'status': 'error', 'message': f'Failed to process key: {str(e)}'}), 400
                 
     except Exception as e:
         raise ValueError(f"Decryption process failed: {str(e)}")
