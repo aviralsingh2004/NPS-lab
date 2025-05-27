@@ -1,217 +1,177 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Connect to Device - Secure File Storage</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure File Sharing Portal</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .status-box {
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .connected {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+        }
+        .disconnected {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+        }
+        .file-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
 </head>
 <body>
-    <div class="container mt-5">
-        <div class="row justify-content-center">
-            <div class="col-md-8">
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title mb-0">Connect to Another Device</h3>
-                    </div>
-                    <div class="card-body">
-                        <!-- Instructions -->
-                        <div class="alert alert-info mb-4">
-                            <h5>How to share keys:</h5>
-                            <ol class="mb-0">
-                                <li>First, encrypt a file using the "Upload File" option</li>
-                                <li>Connect to the other device by entering their IP address</li>
-                                <li>Click "Share Key" to send your encryption key</li>
-                                <li>The other device will receive the key automatically</li>
-                                <li>They can then use this key to decrypt files</li>
-                            </ol>
-                        </div>
+    <div class="container">
+        <h1 class="text-center mb-4">Secure File Sharing Portal</h1>
+        
+        <!-- Connection Status -->
+        <div class="status-box" id="connectionStatus">
+            <h4>Your IP Address: <span id="localIp">{{ local_ip }}</span></h4>
+            <p>Status: <span id="status">Disconnected</span></p>
+        </div>
 
-                        <!-- Connection Form -->
-                        <div class="mb-4">
-                            <h5>Connect to Device</h5>
-                            <div class="input-group">
-                                <input type="text" id="deviceIP" class="form-control" placeholder="Enter device IP address (e.g., 192.168.1.100)">
-                                <button class="btn btn-primary" onclick="connectToDevice()">Connect</button>
-                            </div>
-                        </div>
+        <!-- Connect to Peer -->
+        <div class="mb-4">
+            <h3>Connect to Peer</h3>
+            <div class="input-group">
+                <input type="text" id="peerIp" class="form-control" placeholder="Enter peer's IP address">
+                <button class="btn btn-primary" onclick="connectToPeer()">Connect</button>
+            </div>
+        </div>
 
-                        <!-- Connected Device -->
-                        <div id="connectedDevice" class="mb-4" style="display: none;">
-                            <h5>Connected Device</h5>
-                            <div class="card">
-                                <div class="card-body">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div>
-                                            <h6 class="mb-0" id="connectedIP"></h6>
-                                            <small class="text-success">Connected</small>
-                                        </div>
-                                        <div>
-                                            <button class="btn btn-success btn-sm me-2" onclick="shareKey()">Share Key</button>
-                                            <button class="btn btn-danger btn-sm" onclick="disconnect()">Disconnect</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+        <!-- File Sharing -->
+        <div class="mb-4">
+            <h3>Share File</h3>
+            <div class="mb-3">
+                <input type="file" id="fileInput" class="form-control">
+            </div>
+            <button class="btn btn-success" onclick="shareFile()">Share File</button>
+        </div>
 
-                        <!-- Received Keys -->
-                        <div class="mb-4">
-                            <h5>Received Keys</h5>
-                            <div class="alert alert-info mb-3">
-                                <small>Keys received from other devices will appear here. Click "Use Key" to prepare for decryption.</small>
-                            </div>
-                            <div id="keyList" class="list-group">
-                                <!-- Keys will be listed here -->
-                            </div>
-                        </div>
-
-                        <!-- Status Messages -->
-                        <div class="alert alert-success" id="successMessage" style="display: none;"></div>
-                        <div class="alert alert-danger" id="errorMessage" style="display: none;"></div>
-                    </div>
-                </div>
-
-                <div class="text-center mt-4">
-                    <a href="/home" class="btn btn-secondary">Back to Home</a>
-                </div>
+        <!-- Received Files -->
+        <div class="mb-4">
+            <h3>Received Files</h3>
+            <div class="file-list" id="receivedFiles">
+                <p class="text-muted">No files received yet</p>
             </div>
         </div>
     </div>
 
     <script>
-        let connectedIP = null;
+        let connectedPeer = null;
 
-        function showMessage(message, isError = false) {
-            const successMsg = document.getElementById('successMessage');
-            const errorMsg = document.getElementById('errorMessage');
-            
-            if (isError) {
-                errorMsg.textContent = message;
-                errorMsg.style.display = 'block';
-                successMsg.style.display = 'none';
-            } else {
-                successMsg.textContent = message;
-                successMsg.style.display = 'block';
-                errorMsg.style.display = 'none';
-            }
-            
-            setTimeout(() => {
-                successMsg.style.display = 'none';
-                errorMsg.style.display = 'none';
-            }, 5000);
-        }
-
-        function connectToDevice() {
-            const ip = document.getElementById('deviceIP').value.trim();
-            if (!ip) {
-                showMessage('Please enter an IP address', true);
+        async function connectToPeer() {
+            const peerIp = document.getElementById('peerIp').value;
+            if (!peerIp) {
+                alert('Please enter a peer IP address');
                 return;
             }
 
-            // Test connection to the device
-            fetch(`/test-connection/${ip}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        connectedIP = ip;
-                        document.getElementById('connectedDevice').style.display = 'block';
-                        document.getElementById('connectedIP').textContent = ip;
-                        showMessage('Successfully connected to device');
-                    } else {
-                        showMessage(data.message, true);
-                    }
-                })
-                .catch(error => {
-                    showMessage('Failed to connect to device', true);
-                });
+            try {
+                const response = await fetch(`/test-connection/${peerIp}`);
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    connectedPeer = peerIp;
+                    document.getElementById('status').textContent = `Connected to ${peerIp}`;
+                    document.getElementById('connectionStatus').className = 'status-box connected';
+                } else {
+                    alert('Could not connect to peer');
+                }
+            } catch (error) {
+                alert('Error connecting to peer');
+            }
         }
 
-        function disconnect() {
-            connectedIP = null;
-            document.getElementById('connectedDevice').style.display = 'none';
-            document.getElementById('deviceIP').value = '';
-            showMessage('Disconnected from device');
-        }
-
-        function shareKey() {
-            if (!connectedIP) {
-                showMessage('No device connected', true);
+        async function shareFile() {
+            if (!connectedPeer) {
+                alert('Please connect to a peer first');
                 return;
             }
 
-            fetch(`/share-key/${connectedIP}`, { method: 'POST' })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        showMessage(data.message);
-                    } else {
-                        showMessage(data.message, true);
-                    }
-                })
-                .catch(error => {
-                    showMessage('Failed to share key', true);
+            const fileInput = document.getElementById('fileInput');
+            if (!fileInput.files.length) {
+                alert('Please select a file to share');
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                // First, encrypt the file and get the key
+                const encryptResponse = await fetch('/share-file', {
+                    method: 'POST',
+                    body: formData
                 });
-        }
+                const encryptData = await encryptResponse.json();
 
-        function useKey(ip) {
-            fetch(`/use-shared-key/${ip}`, { method: 'POST' })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        showMessage(data.message);
-                        // Redirect to download page after successful key usage
-                        setTimeout(() => {
-                            window.location.href = '/download';
-                        }, 2000);
+                if (encryptData.status === 'success') {
+                    // Now send the encrypted file and key to the peer
+                    const shareFormData = new FormData();
+                    shareFormData.append('file', file);
+                    shareFormData.append('key', encryptData.key);
+
+                    const shareResponse = await fetch(`http://${connectedPeer}:8000/receive-file`, {
+                        method: 'POST',
+                        body: shareFormData
+                    });
+                    const shareData = await shareResponse.json();
+
+                    if (shareData.status === 'success') {
+                        alert('File shared successfully');
+                        updateReceivedFiles();
                     } else {
-                        showMessage(data.message, true);
+                        alert('Error sharing file: ' + shareData.message);
                     }
-                })
-                .catch(error => {
-                    showMessage('Failed to use key', true);
-                });
+                } else {
+                    alert('Error encrypting file: ' + encryptData.message);
+                }
+            } catch (error) {
+                alert('Error sharing file');
+            }
         }
 
-        function downloadKey(peer) {
-            window.location.href = `/download-received-key/${peer}`;
-        }
-
-        function refreshReceivedKeys() {
-            fetch('/received-keys')
-                .then(response => response.json())
-                .then(data => {
-                    const keyList = document.getElementById('keyList');
-                    if (data.keys.length === 0) {
-                        keyList.innerHTML = '<div class="list-group-item text-center">No keys received</div>';
-                        return;
-                    }
-                    
-                    keyList.innerHTML = data.keys.map(peer => `
-                        <div class="list-group-item">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>Key from ${peer}</div>
-                                <div>
-                                    <button class="btn btn-primary btn-sm me-2" onclick="useKey('${peer}')">
-                                        Use Key
-                                    </button>
-                                    <button class="btn btn-info btn-sm" onclick="downloadKey('${peer}')">
-                                        Download Key
-                                    </button>
-                                </div>
-                            </div>
+        async function updateReceivedFiles() {
+            try {
+                const response = await fetch('/received-files');
+                const data = await response.json();
+                
+                const fileList = document.getElementById('receivedFiles');
+                if (data.files && data.files.length > 0) {
+                    fileList.innerHTML = data.files.map(file => `
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span>${file}</span>
+                            <a href="/download/${file}" class="btn btn-sm btn-primary">Download</a>
                         </div>
                     `).join('');
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    showMessage('Failed to fetch received keys', true);
-                });
+                } else {
+                    fileList.innerHTML = '<p class="text-muted">No files received yet</p>';
+                }
+            } catch (error) {
+                console.error('Error updating file list:', error);
+            }
         }
 
-        // Initial load of received keys
-        refreshReceivedKeys();
-
-        // Refresh received keys every 5 seconds
-        setInterval(refreshReceivedKeys, 5000);
+        // Update file list periodically
+        setInterval(updateReceivedFiles, 5000);
     </script>
 </body>
 </html> 
