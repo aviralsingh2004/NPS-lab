@@ -43,6 +43,10 @@
             background-color: #f8f9fa;
             border-radius: 5px;
         }
+        .status-message {
+            display: none;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -88,6 +92,10 @@
                 <p class="text-muted">No files received yet</p>
             </div>
         </div>
+
+        <div class="alert alert-success status-message" id="successMessage"></div>
+        <div class="alert alert-danger status-message" id="errorMessage"></div>
+
     </div>
 
     <script>
@@ -119,7 +127,7 @@
         async function connectToPeer() {
             const peerIp = document.getElementById('peerIp').value;
             if (!peerIp) {
-                alert('Please enter a peer IP address');
+                showMessage('Please enter a peer IP address', true);
                 return;
             }
 
@@ -140,19 +148,19 @@
                 }
             } catch (error) {
                 console.error('Connection error:', error);
-                alert('Error connecting to peer: ' + error.message);
+                showMessage('Error connecting to peer: ' + error.message, true);
             }
         }
 
         async function shareFile() {
             if (!connectedPeer) {
-                alert('Please connect to a peer first');
+                showMessage('Please connect to a peer first', true);
                 return;
             }
 
             const fileInput = document.getElementById('fileInput');
             if (!fileInput.files.length) {
-                alert('Please select a file to share');
+                showMessage('Please select a file to share', true);
                 return;
             }
 
@@ -211,7 +219,7 @@
                         console.log('Share response:', shareData);
 
                         if (shareData.status === 'success') {
-                            alert('File shared successfully');
+                            showMessage('File shared successfully');
                             updateReceivedFiles();
                         } else {
                             throw new Error(shareData.message || 'Unknown error occurred');
@@ -227,7 +235,7 @@
                 }
             } catch (error) {
                 console.error('Error sharing file:', error);
-                alert('Error sharing file: ' + error.message);
+                showMessage('Error sharing file: ' + error.message, true);
             }
         }
 
@@ -257,15 +265,33 @@
             }
         }
 
-        // Update peer list and file list periodically
-        setInterval(() => {
-            updatePeerList();
-            updateReceivedFiles();
-        }, 5000);
+        function showMessage(message, isError = false) {
+            const successMsg = document.getElementById('successMessage');
+            const errorMsg = document.getElementById('errorMessage');
+
+            if (isError) {
+                errorMsg.textContent = message;
+                errorMsg.style.display = 'block';
+                successMsg.style.display = 'none';
+            } else {
+                successMsg.textContent = message;
+                successMsg.style.display = 'block';
+                errorMsg.style.display = 'none';
+            }
+
+            setTimeout(() => {
+                successMsg.style.display = 'none';
+                errorMsg.style.display = 'none';
+            }, 5000); // Hide after 5 seconds
+        }
 
         // Initial updates
         updatePeerList();
         updateReceivedFiles();
+
+        // Refresh lists periodically
+        setInterval(updatePeerList, 5000); // Refresh every 5 seconds
+        setInterval(updateReceivedFiles, 10000); // Refresh every 10 seconds
     </script>
 </body>
 </html> 
