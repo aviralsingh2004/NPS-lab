@@ -34,6 +34,15 @@
             max-height: 300px;
             overflow-y: auto;
         }
+        .peer-list {
+            margin-bottom: 20px;
+        }
+        .peer-item {
+            padding: 10px;
+            margin: 5px 0;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
     </style>
 </head>
 <body>
@@ -44,6 +53,14 @@
         <div class="status-box" id="connectionStatus">
             <h4>Your IP Address: <span id="localIp">{{ local_ip }}</span></h4>
             <p>Status: <span id="status">Disconnected</span></p>
+        </div>
+
+        <!-- Connected Peers -->
+        <div class="mb-4">
+            <h3>Connected Peers</h3>
+            <div class="peer-list" id="peerList">
+                <p class="text-muted">No peers connected</p>
+            </div>
         </div>
 
         <!-- Connect to Peer -->
@@ -76,6 +93,26 @@
     <script>
         let connectedPeer = null;
 
+        async function updatePeerList() {
+            try {
+                const response = await fetch('/get-connections');
+                const data = await response.json();
+                
+                const peerList = document.getElementById('peerList');
+                if (data.connections && data.connections.length > 0) {
+                    peerList.innerHTML = data.connections.map(peer => `
+                        <div class="peer-item">
+                            <span>${peer}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    peerList.innerHTML = '<p class="text-muted">No peers connected</p>';
+                }
+            } catch (error) {
+                console.error('Error updating peer list:', error);
+            }
+        }
+
         async function connectToPeer() {
             const peerIp = document.getElementById('peerIp').value;
             if (!peerIp) {
@@ -91,6 +128,7 @@
                     connectedPeer = peerIp;
                     document.getElementById('status').textContent = `Connected to ${peerIp}`;
                     document.getElementById('connectionStatus').className = 'status-box connected';
+                    updatePeerList();
                 } else {
                     alert('Could not connect to peer');
                 }
@@ -170,8 +208,15 @@
             }
         }
 
-        // Update file list periodically
-        setInterval(updateReceivedFiles, 5000);
+        // Update peer list and file list periodically
+        setInterval(() => {
+            updatePeerList();
+            updateReceivedFiles();
+        }, 5000);
+
+        // Initial updates
+        updatePeerList();
+        updateReceivedFiles();
     </script>
 </body>
 </html> 

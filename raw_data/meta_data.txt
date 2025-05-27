@@ -1,2 +1,2 @@
-File_Name=cop2.jpg
+File_Name=cop2_1.jpg
 chapters=8

@@ -27,8 +27,9 @@ app.secret_key = os.urandom(24)
 for directory in [UPLOAD_FOLDER, UPLOAD_KEY, 'files', 'encrypted', 'restored_file', 'raw_data', 'received_files']:
     os.makedirs(directory, exist_ok=True)
 
-# Store connected peers
+# Store connected peers and their status
 connected_peers = {}
+peer_connections = {}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -98,10 +99,28 @@ def test_connection(ip):
     try:
         response = requests.get(f'http://{ip}:8000/ping', timeout=2)
         if response.status_code == 200:
+            # Notify the peer about the connection
+            try:
+                requests.post(f'http://{ip}:8000/peer-connected', json={'peer': get_local_ip()})
+            except:
+                pass  # Ignore if notification fails
             return jsonify({'status': 'success', 'message': 'Connection successful'})
     except RequestException:
         pass
     return jsonify({'status': 'error', 'message': 'Could not connect to device'})
+
+@app.route('/peer-connected', methods=['POST'])
+def peer_connected():
+    data = request.get_json()
+    if data and 'peer' in data:
+        peer = data['peer']
+        peer_connections[peer] = True
+        return jsonify({'status': 'success'})
+    return jsonify({'status': 'error'}), 400
+
+@app.route('/get-connections')
+def get_connections():
+    return jsonify({'connections': list(peer_connections.keys())})
 
 @app.route('/ping')
 def ping():
@@ -169,13 +188,26 @@ def receive_file():
             # Decrypt the file
             decrypted_path = decrypt_file(file_path, key_path)
             
+            # Move the decrypted file to received_files directory
+            received_filename = os.path.basename(decrypted_path)
+            received_path = os.path.join('received_files', received_filename)
+            os.rename(decrypted_path, received_path)
+            
             return jsonify({
                 'status': 'success',
                 'message': 'File decrypted successfully',
-                'filename': os.path.basename(decrypted_path)
+                'filename': received_filename
             })
             
         return jsonify({'status': 'error', 'message': 'Invalid file format'}), 400
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/received-files')
+def get_received_files():
+    try:
+        files = os.listdir('received_files')
+        return jsonify({'files': files})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
@@ -183,7 +215,7 @@ def receive_file():
 def download_file(filename):
     try:
         return send_file(
-            os.path.join('restored_file', filename),
+            os.path.join('received_files', filename),
             as_attachment=True
         )
     except Exception as e:
