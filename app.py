@@ -497,11 +497,10 @@ def receive_file():
         
         try:
             # Clean up any existing files with similar names
-            for pattern in ['store_in_me.enc', f'encrypted_{timestamp}.enc']:
-                potential_conflict = os.path.join('raw_data', pattern)
-                safe_remove_file(potential_conflict)
-                potential_conflict = os.path.join(app.config['UPLOAD_FOLDER'], pattern)
-                safe_remove_file(potential_conflict)
+            potential_conflict = os.path.join('raw_data', 'store_in_me.enc')
+            safe_remove_file(potential_conflict)
+            potential_conflict = os.path.join(app.config['UPLOAD_FOLDER'], 'store_in_me.enc')
+            safe_remove_file(potential_conflict)
             
             # Decode and save the encrypted file
             try:
