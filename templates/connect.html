@@ -96,6 +96,9 @@
         async function updatePeerList() {
             try {
                 const response = await fetch('/get-connections');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
                 const data = await response.json();
                 
                 const peerList = document.getElementById('peerList');
@@ -122,6 +125,9 @@
 
             try {
                 const response = await fetch(`/test-connection/${peerIp}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
                 const data = await response.json();
                 
                 if (data.status === 'success') {
@@ -130,10 +136,11 @@
                     document.getElementById('connectionStatus').className = 'status-box connected';
                     updatePeerList();
                 } else {
-                    alert('Could not connect to peer');
+                    throw new Error(data.message || 'Could not connect to peer');
                 }
             } catch (error) {
-                alert('Error connecting to peer');
+                console.error('Connection error:', error);
+                alert('Error connecting to peer: ' + error.message);
             }
         }
 
@@ -155,42 +162,84 @@
 
             try {
                 // First, encrypt the file and get the key
+                console.log('Encrypting file...');
                 const encryptResponse = await fetch('/share-file', {
                     method: 'POST',
                     body: formData
                 });
+
+                if (!encryptResponse.ok) {
+                    const errorText = await encryptResponse.text();
+                    console.error('Encryption response error:', errorText);
+                    throw new Error(`Encryption failed: ${encryptResponse.status} - ${errorText}`);
+                }
+
                 const encryptData = await encryptResponse.json();
+                console.log('Encryption response:', encryptData);
 
                 if (encryptData.status === 'success') {
-                    // Now send the encrypted file and key to the peer
-                    const shareFormData = new FormData();
-                    shareFormData.append('file', file);
-                    shareFormData.append('key', encryptData.key);
+                    console.log('File encrypted successfully, sending to peer...');
+                    
+                    // Add timeout to the fetch request
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-                    const shareResponse = await fetch(`http://${connectedPeer}:8000/receive-file`, {
-                        method: 'POST',
-                        body: shareFormData
-                    });
-                    const shareData = await shareResponse.json();
+                    try {
+                        // Send encrypted file and key to peer
+                        const shareResponse = await fetch(`http://${connectedPeer}:8000/receive-file`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                encrypted_file: encryptData.encrypted_file,
+                                key: encryptData.key,
+                                filename: encryptData.filename
+                            }),
+                            signal: controller.signal
+                        });
 
-                    if (shareData.status === 'success') {
-                        alert('File shared successfully');
-                        updateReceivedFiles();
-                    } else {
-                        alert('Error sharing file: ' + shareData.message);
+                        clearTimeout(timeoutId);
+
+                        if (!shareResponse.ok) {
+                            const errorText = await shareResponse.text();
+                            console.error('Share response error:', errorText);
+                            throw new Error(`Peer rejected file: ${shareResponse.status} - ${errorText}`);
+                        }
+
+                        const shareData = await shareResponse.json();
+                        console.log('Share response:', shareData);
+
+                        if (shareData.status === 'success') {
+                            alert('File shared successfully');
+                            updateReceivedFiles();
+                        } else {
+                            throw new Error(shareData.message || 'Unknown error occurred');
+                        }
+                    } catch (error) {
+                        if (error.name === 'AbortError') {
+                            throw new Error('Request timed out - peer may be offline or unreachable');
+                        }
+                        throw error;
                     }
                 } else {
-                    alert('Error encrypting file: ' + encryptData.message);
+                    throw new Error(encryptData.message || 'Encryption failed');
                 }
             } catch (error) {
-                alert('Error sharing file');
+                console.error('Error sharing file:', error);
+                alert('Error sharing file: ' + error.message);
             }
         }
 
         async function updateReceivedFiles() {
             try {
                 const response = await fetch('/received-files');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
                 const data = await response.json();
+                console.log('Received files:', data);
                 
                 const fileList = document.getElementById('receivedFiles');
                 if (data.files && data.files.length > 0) {
